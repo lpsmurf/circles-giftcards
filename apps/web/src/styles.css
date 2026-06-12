@@ -1,0 +1,45 @@
+:root {
+  --bg: #0f1115;
+  --card: #1a1d24;
+  --text: #e8eaed;
+  --muted: #9aa0a6;
+  --accent: #7c5cff;
+  --accent-2: #38d39f;
+  --border: #2a2e37;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+.container { max-width: 560px; margin: 0 auto; padding: 16px; }
+header { padding: 20px 0; }
+header h1 { font-size: 1.3rem; margin: 0; }
+header p { color: var(--muted); margin: 4px 0 0; font-size: 0.9rem; }
+.search-row { display: flex; gap: 8px; margin: 12px 0; }
+input, select {
+  flex: 1; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--card); color: var(--text);
+}
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px; cursor: pointer; transition: border-color 0.15s;
+}
+.card:hover { border-color: var(--accent); }
+.card h3 { margin: 0 0 4px; font-size: 0.95rem; }
+.card p { margin: 0; color: var(--muted); font-size: 0.8rem; }
+.quote-box { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-top: 12px; }
+.quote-box .line { display: flex; justify-content: space-between; padding: 4px 0; font-size: 0.9rem; }
+.quote-box .line.total { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 10px; font-weight: 600; }
+.quote-box .muted { color: var(--muted); }
+button.primary {
+  width: 100%; margin-top: 14px; padding: 12px; border: none; border-radius: 10px;
+  background: var(--accent); color: white; font-size: 1rem; font-weight: 600; cursor: pointer;
+}
+button.primary:disabled { opacity: 0.5; cursor: default; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.7rem; background: var(--accent-2); color: #08130e; }
+.error { color: #ff7b72; font-size: 0.85rem; }
+.deposit { word-break: break-all; font-family: ui-monospace, monospace; font-size: 0.8rem; background: var(--bg); padding: 10px; border-radius: 8px; margin-top: 8px; }

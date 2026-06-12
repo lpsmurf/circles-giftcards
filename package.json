@@ -1,0 +1,21 @@
+{
+  "name": "circles-giftcards",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Circles mini app: pay for gift cards with CRC via auto-swap to stablecoins and Cryptorefills x402",
+  "license": "MIT",
+  "author": "HFSP Labs <info@hfsp.xyz> (https://hfsp.xyz)",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:server": "npm run dev -w apps/server",
+    "dev:web": "npm run dev -w apps/web",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20.10"
+  }
+}
