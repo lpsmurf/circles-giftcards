@@ -34,9 +34,12 @@ catalogRouter.get("/products", async (req, res) => {
   try {
     const country = String(req.query.country ?? "DE").toUpperCase();
     const brand = req.query.brand ? String(req.query.brand) : undefined;
+    // Pass explicit coin filter when provided; callers can request coin=USDC to
+    // see only stablecoin-priced products.
+    const coin = req.query.coin ? String(req.query.coin) : undefined;
     res.json(
-      await cached(`products:${country}:${brand ?? ""}`, () =>
-        listProductsForCountry({ country_code: country, brand_name: brand }),
+      await cached(`products:${country}:${brand ?? ""}:${coin ?? ""}`, () =>
+        listProductsForCountry({ country_code: country, brand_name: brand, coin }),
       ),
     );
   } catch (err) {

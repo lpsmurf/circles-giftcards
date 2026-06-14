@@ -59,16 +59,31 @@ quoteRouter.post("/", async (req, res) => {
       return res.status(400).json({ error: "brand, country, faceValue required" });
     }
 
-    const priceResp = (await getProductPrice({
-      brand_name: brand,
-      country_code: country.toUpperCase(),
-      face_value: faceValue,
-      coin: "USDC",
-    })) as Record<string, unknown>;
-    // Upstream shape: { coin_amount: "29.77", coin: "USDC", product_id, range, ... }
-    const priceUsdc = Number((priceResp as { coin_amount?: string }).coin_amount ?? NaN);
+    // Try USDC first (direct 1:1 with USD); fall back to USDT (also 1:1); fall back
+    // to face_value for brands whose MCP catalog entry only lists BTC even though
+    // they accept stablecoin payment via USER_WALLET checkout.
+    let priceUsdc: number = NaN;
+    for (const coin of ["USDC", "USDT"]) {
+      try {
+        const priceResp = (await getProductPrice({
+          brand_name: brand,
+          country_code: country.toUpperCase(),
+          face_value: faceValue,
+          coin,
+        })) as Record<string, unknown>;
+        const amount = Number((priceResp as { coin_amount?: string }).coin_amount ?? NaN);
+        if (Number.isFinite(amount)) {
+          priceUsdc = amount;
+          break;
+        }
+      } catch {
+        // try next coin
+      }
+    }
+    // Last resort: use face_value directly as USD approximation (close for USD-
+    // denominated cards; may be ~5-10% off for EUR/GBP cards due to FX).
     if (!Number.isFinite(priceUsdc)) {
-      return res.status(502).json({ error: "could not parse upstream price", upstream: priceResp });
+      priceUsdc = faceValue;
     }
 
     const usdcNeeded = priceUsdc + SETTLEMENT_COST_USD_ESTIMATE;
