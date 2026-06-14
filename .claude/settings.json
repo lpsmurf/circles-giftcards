@@ -3,11 +3,7 @@
     "allow": [
       "Read(//private/tmp/mock-erc20-out/MockERC20.sol/**)",
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(d['bytecode']['object'][:80], '...'\\)\")",
-      "Bash(curl -s \"http://localhost:3001/api/catalog/products?country=US&brand=Steam\")",
-      "Bash(python3 -c ' *)",
-      "Bash(git -C /Users/luisploennig/circlerefill/circles-giftcards add apps/server/src/routes/quote.ts)",
-      "Bash(git -C /Users/luisploennig/circlerefill/circles-giftcards commit -m 'fix: use || not ?? for ORCHESTRATOR_SAFE_ADDRESS fallback in quote *)",
-      "Bash(git -C /Users/luisploennig/circlerefill/circles-giftcards push origin main)"
+      "Bash(curl -s \"http://localhost:3001/api/catalog/products?country=US&brand=Steam\")"
     ]
   }
 }
