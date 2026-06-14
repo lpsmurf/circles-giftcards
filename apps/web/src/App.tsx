@@ -7,6 +7,8 @@ interface Brand {
   category?: string;
   min?: string;
   max?: string;
+  logo_url?: string;
+  bg_color?: string;
 }
 
 interface ProductInfo {
@@ -55,6 +57,32 @@ function stepIndex(status: string): number {
   return STEPS.findIndex((s) => s.statuses.includes(status));
 }
 
+// ── Generate dropdown options for a range product ─────────────────────────────
+function rangeOptions(min: number, max: number, step: number): number[] {
+  const exactCount = Math.round((max - min) / step) + 1;
+  // If ≤ 20 exact steps, enumerate all.
+  if (exactCount <= 20) {
+    return Array.from({ length: exactCount }, (_, i) => min + i * step);
+  }
+  // Otherwise build ~12 "nice" values spread across the range.
+  const nice: number[] = [min];
+  const magnitudes = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000, 10000];
+  for (const mag of magnitudes) {
+    for (let v = Math.ceil(min / mag) * mag; v <= max; v += mag) {
+      if (v > min && v < max) nice.push(v);
+    }
+  }
+  nice.push(max);
+  const sorted = [...new Set(nice)].sort((a, b) => a - b);
+  // Keep at most 15 evenly-spaced picks + min/max.
+  if (sorted.length <= 15) return sorted;
+  const result = [sorted[0]];
+  const step2 = Math.floor((sorted.length - 2) / 13);
+  for (let i = step2; i < sorted.length - 1; i += step2) result.push(sorted[i]);
+  result.push(sorted[sorted.length - 1]);
+  return [...new Set(result)].sort((a, b) => a - b);
+}
+
 // ── Parse Cryptorefills product response into a simple ProductInfo ────────────
 function parseProductInfo(data: unknown): ProductInfo | null {
   const items = Array.isArray(data) ? data : [data];
@@ -72,12 +100,16 @@ function parseProductInfo(data: unknown): ProductInfo | null {
   if (sample.is_dynamic) {
     const range = sample.range as Record<string, number> | null;
     if (!range) return null;
+    const min = Number(range.min);
+    const max = Number(range.max);
+    const step = Number(range.step_size ?? 1);
     return {
-      currency: range.currency as unknown as string,
+      currency: String(range.currency ?? ""),
       isRange: true,
-      min: range.min,
-      max: range.max,
-      step: range.step_size ?? 1,
+      min,
+      max,
+      step,
+      denominations: rangeOptions(min, max, step),
     };
   }
 
@@ -388,8 +420,13 @@ export function App() {
         <div className="grid">
           {visible.slice(0, 30).map((b, i) => (
             <div key={i} className="card" onClick={() => { setSelected(b); setSearch(""); }}>
+              {b.logo_url && (
+                <div className="card-logo" style={{ background: b.bg_color || "#fff" }}>
+                  <img src={b.logo_url} alt={brandName(b)} loading="lazy" />
+                </div>
+              )}
               <h3>{brandName(b)}</h3>
-              <p>{b.category ?? "gift card"}</p>
+              <p>{b.category ?? "gift card"}{b.min && b.max ? ` · ${b.min}–${b.max}` : ""}</p>
             </div>
           ))}
         </div>
@@ -407,57 +444,39 @@ export function App() {
             <p className="muted" style={{ fontSize: "0.8rem", marginTop: 10 }}>Loading denominations…</p>
           )}
 
-          {productInfo && !productLoading && (
-            <>
-              {productInfo.isRange ? (
-                <div className="line" style={{ marginTop: 10 }}>
-                  <span className="muted">
-                    Amount ({cur})
-                    <span style={{ fontSize: "0.72rem", marginLeft: 6 }}>
-                      {productInfo.min}–{productInfo.max}
-                    </span>
+          {(productInfo ?? !productLoading) && (
+            <div className="line" style={{ marginTop: 10, alignItems: "center" }}>
+              <span className="muted">
+                Amount{cur ? ` (${cur})` : ""}
+                {productInfo?.isRange && productInfo.min != null && (
+                  <span style={{ fontSize: "0.72rem", marginLeft: 6, color: "var(--muted)" }}>
+                    {productInfo.min}–{productInfo.max}
                   </span>
-                  <input
-                    style={{ maxWidth: 110, textAlign: "right" }}
-                    type="number"
-                    min={productInfo.min}
-                    max={productInfo.max}
-                    step={productInfo.step ?? 1}
-                    value={faceValue}
-                    onChange={(e) => { setFaceValue(Number(e.target.value)); setQuote(null); }}
-                  />
-                </div>
+                )}
+              </span>
+              {productInfo?.denominations?.length ? (
+                <select
+                  className="denom-select"
+                  value={faceValue}
+                  onChange={(e) => { setFaceValue(Number(e.target.value)); setQuote(null); }}
+                >
+                  {productInfo.denominations.map((d) => (
+                    <option key={d} value={d}>
+                      {d} {cur}
+                    </option>
+                  ))}
+                </select>
               ) : (
-                <div style={{ marginTop: 10 }}>
-                  <p className="muted" style={{ fontSize: "0.8rem", margin: "0 0 6px" }}>
-                    Select amount ({cur})
-                  </p>
-                  <div className="denom-row">
-                    {productInfo.denominations?.map((d) => (
-                      <button
-                        key={d}
-                        className={`denom-btn${faceValue === d ? " selected" : ""}`}
-                        onClick={() => { setFaceValue(d); setQuote(null); }}
-                      >
-                        {d}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <input
+                  className="denom-input"
+                  type="number"
+                  min={productInfo?.min}
+                  max={productInfo?.max}
+                  step={productInfo?.step ?? 1}
+                  value={faceValue}
+                  onChange={(e) => { setFaceValue(Number(e.target.value)); setQuote(null); }}
+                />
               )}
-            </>
-          )}
-
-          {/* Fallback when no product info loaded */}
-          {!productInfo && !productLoading && (
-            <div className="line" style={{ marginTop: 10 }}>
-              <span className="muted">Face value</span>
-              <input
-                style={{ maxWidth: 100, textAlign: "right" }}
-                type="number"
-                value={faceValue}
-                onChange={(e) => { setFaceValue(Number(e.target.value)); setQuote(null); }}
-              />
             </div>
           )}
 
