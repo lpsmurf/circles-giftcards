@@ -79,7 +79,7 @@ quoteRouter.post("/", async (req, res) => {
     const crcToken = process.env.CRC_TOKEN_ADDRESS || null;
     let crcTotalWei: string | null = null;
     if (crcToken) {
-      const operator = process.env.ORCHESTRATOR_SAFE_ADDRESS ?? "0x0000000000000000000000000000000000000001";
+      const operator = process.env.ORCHESTRATOR_SAFE_ADDRESS || "0x0000000000000000000000000000000000000001";
       const cow = await quoteSellForExactBuy({
         sellToken: crcToken,
         buyAmountWei: BigInt(Math.ceil(usdcNeeded * 1e6)),
