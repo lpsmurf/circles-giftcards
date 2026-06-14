@@ -55,13 +55,25 @@ orderRouter.post("/", async (req, res) => {
       return res.status(410).json({ error: "quote expired — request a new one" });
     }
 
-    const validation = await validateOrder({
-      brand_name: quote.brand,
-      country_code: quote.country,
-      face_value: quote.faceValue,
-      coin: "USDC",
-      ...(recipientEmail ? { email: recipientEmail } : {}),
-    });
+    // Best-effort upstream pre-validation. Some brands' MCP catalog entries list
+    // only BTC even though they accept stablecoin checkout, so a coin-specific
+    // validation failure must not block the order — settlement coin is resolved
+    // later in the pipeline.
+    let validation: unknown = null;
+    for (const coin of ["USDC", "USDT"]) {
+      try {
+        validation = await validateOrder({
+          brand_name: quote.brand,
+          country_code: quote.country,
+          face_value: quote.faceValue,
+          coin,
+          ...(recipientEmail ? { email: recipientEmail } : {}),
+        });
+        break;
+      } catch {
+        // try next coin; non-fatal
+      }
+    }
 
     const state = startOrderPipeline({ quote, payerAddress });
     res.json({

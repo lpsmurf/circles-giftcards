@@ -381,7 +381,13 @@ export function App() {
     <div className="container">
       <header>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <h1 style={{ margin: 0 }}>🎁 Circles Gift Cards</h1>
+          <h1
+            className="home-title"
+            onClick={reset}
+            title="Back to home"
+          >
+            🎁 Circles Gift Cards
+          </h1>
           {walletAddress ? (
             <span className="wallet-chip" title={walletAddress}>
               {walletAddress.slice(0, 6)}…{walletAddress.slice(-4)}
@@ -521,6 +527,9 @@ export function App() {
                   {walletConnecting ? "Connecting…" : "Connect wallet to pay"}
                 </button>
               )}
+              <button className="secondary" onClick={reset} disabled={loading}>
+                Cancel
+              </button>
             </>
           )}
         </div>
@@ -561,6 +570,12 @@ export function App() {
               </p>
               <p className="muted" style={{ fontSize: "0.72rem" }}>
                 Polling for deposit… (order {order.orderId.slice(0, 8)})
+              </p>
+              <button className="secondary" style={{ marginTop: 8 }} onClick={reset}>
+                Cancel order
+              </button>
+              <p className="muted" style={{ fontSize: "0.7rem", marginTop: 6, textAlign: "center" }}>
+                Safe to cancel — your CRC has not been sent yet.
               </p>
             </>
           )}

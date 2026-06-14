@@ -40,6 +40,17 @@ button.primary {
   background: var(--accent); color: white; font-size: 1rem; font-weight: 600; cursor: pointer;
 }
 button.primary:disabled { opacity: 0.5; cursor: default; }
+button.secondary {
+  width: 100%; margin-top: 8px; padding: 11px; border-radius: 10px;
+  background: transparent; color: var(--muted); font-size: 0.95rem;
+  font-weight: 600; cursor: pointer; border: 1px solid var(--border);
+}
+button.secondary:hover { border-color: var(--accent); color: var(--text); }
+button.secondary:disabled { opacity: 0.5; cursor: default; }
+
+/* Clickable header title acts as a home button */
+.home-title { margin: 0; cursor: pointer; user-select: none; transition: opacity 0.15s; }
+.home-title:hover { opacity: 0.8; }
 .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.7rem; background: var(--accent-2); color: #08130e; }
 .error { color: #ff7b72; font-size: 0.85rem; }
 .deposit { word-break: break-all; font-family: ui-monospace, monospace; font-size: 0.8rem; background: var(--bg); padding: 10px; border-radius: 8px; margin-top: 8px; }
