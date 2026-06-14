@@ -58,29 +58,24 @@ function stepIndex(status: string): number {
 }
 
 // ── Generate dropdown options for a range product ─────────────────────────────
+// Produces "nice" round denominations (a 1-2-5 series) within [min, max], always
+// including the exact min and max bounds.
 function rangeOptions(min: number, max: number, step: number): number[] {
   const exactCount = Math.round((max - min) / step) + 1;
-  // If ≤ 20 exact steps, enumerate all.
+  // If ≤ 20 discrete steps, enumerate all of them.
   if (exactCount <= 20) {
     return Array.from({ length: exactCount }, (_, i) => min + i * step);
   }
-  // Otherwise build ~12 "nice" values spread across the range.
-  const nice: number[] = [min];
-  const magnitudes = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000, 10000];
-  for (const mag of magnitudes) {
-    for (let v = Math.ceil(min / mag) * mag; v <= max; v += mag) {
+  // Otherwise build a 1-2-5 series spanning the range (e.g. 50, 100, 200, 500,
+  // 1000, 2000, 5000, 10000 …) and clamp to [min, max].
+  const nice: number[] = [];
+  for (let mag = 1; mag <= max; mag *= 10) {
+    for (const m of [1, 2, 5]) {
+      const v = m * mag;
       if (v > min && v < max) nice.push(v);
     }
   }
-  nice.push(max);
-  const sorted = [...new Set(nice)].sort((a, b) => a - b);
-  // Keep at most 15 evenly-spaced picks + min/max.
-  if (sorted.length <= 15) return sorted;
-  const result = [sorted[0]];
-  const step2 = Math.floor((sorted.length - 2) / 13);
-  for (let i = step2; i < sorted.length - 1; i += step2) result.push(sorted[i]);
-  result.push(sorted[sorted.length - 1]);
-  return [...new Set(result)].sort((a, b) => a - b);
+  return [...new Set([min, ...nice, max])].sort((a, b) => a - b);
 }
 
 // ── Parse Cryptorefills product response into a simple ProductInfo ────────────
