@@ -40,6 +40,7 @@ interface LiveOrder {
   depositAddress: string;
   crcRequiredWei: string;
   expiresAt: string;
+  recipientEmail: string;
   giftCard: { code: string } | null;
   txHashes: Record<string, string>;
 }
@@ -207,6 +208,7 @@ export function App() {
   const [productInfo, setProductInfo] = useState<ProductInfo | null>(null);
   const [productLoading, setProductLoading] = useState(false);
   const [faceValue, setFaceValue] = useState(25);
+  const [email, setEmail] = useState("");
   const [quote, setQuote] = useState<Quote | null>(null);
   const [order, setOrder] = useState<LiveOrder | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -331,10 +333,16 @@ export function App() {
     }
   }
 
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
   async function pay() {
     if (!quote) return;
     if (!walletAddress) {
       setError("Please connect your wallet first.");
+      return;
+    }
+    if (!emailValid) {
+      setError("Enter a valid email — your gift card code is sent there directly.");
       return;
     }
     setLoading(true);
@@ -343,7 +351,7 @@ export function App() {
       const r = await fetch("/api/order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ quoteId: quote.id, payerAddress: walletAddress }),
+        body: JSON.stringify({ quoteId: quote.id, payerAddress: walletAddress, recipientEmail: email.trim() }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error ?? r.statusText);
@@ -353,6 +361,7 @@ export function App() {
         depositAddress: data.depositAddress,
         crcRequiredWei: quote.crcTotalWei ?? "0",
         expiresAt: data.expiresAt ?? quote.expiresAt,
+        recipientEmail: email.trim(),
         giftCard: null,
         txHashes: {},
       };
@@ -372,6 +381,8 @@ export function App() {
     setError(null);
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
   }
+  // Note: email is intentionally retained across resets so a repeat buyer
+  // doesn't have to retype it.
 
   const feePct = quote ? (quote.serviceFeeBps / 100).toFixed(2) : null;
   const crcDisplay = (wei: string) => (Number(wei) / 1e18).toFixed(4);
@@ -518,9 +529,25 @@ export function App() {
               <p className="muted" style={{ fontSize: "0.75rem" }}>
                 Quote expires at <Countdown expiresAt={quote.expiresAt} /> — re-priced on expiry.
               </p>
+
+              <label className="email-label">
+                Delivery email
+                <input
+                  className="email-input"
+                  type="email"
+                  inputMode="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </label>
+              <p className="muted" style={{ fontSize: "0.72rem", margin: "2px 0 0" }}>
+                🔒 Your gift card code is emailed straight to you by Cryptorefills. We never see or store it.
+              </p>
+
               {walletAddress ? (
-                <button className="primary" onClick={pay} disabled={loading}>
-                  {loading ? "Creating order…" : "Pay with Circles"}
+                <button className="primary" onClick={pay} disabled={loading || !emailValid}>
+                  {loading ? "Creating order…" : emailValid ? "Pay with Circles" : "Enter email to continue"}
                 </button>
               ) : (
                 <button className="primary" onClick={connectWallet} disabled={walletConnecting}>
@@ -593,19 +620,21 @@ export function App() {
             </>
           )}
 
-          {order.status === "DELIVERED" && order.giftCard && (
+          {order.status === "DELIVERED" && (
             <>
               <p style={{ margin: "0 0 12px", fontWeight: 600, color: "var(--accent-2)" }}>
-                ✓ Your gift card is ready!
+                ✓ Your gift card has been sent!
               </p>
               <div className="gift-card">
-                <span className="muted" style={{ fontSize: "0.75rem", display: "block", marginBottom: 4 }}>
-                  {selected ? brandName(selected) : "Gift card"}
+                <span className="muted" style={{ fontSize: "0.75rem", display: "block", marginBottom: 6 }}>
+                  {selected ? brandName(selected) : "Gift card"} · delivered by email
                 </span>
-                <div className="copy-val">
-                  <span className="mono code">{order.giftCard.code}</span>
-                  <CopyButton text={order.giftCard.code} />
-                </div>
+                <p style={{ margin: 0, fontSize: "0.9rem" }}>
+                  📧 Check your inbox at <strong>{order.recipientEmail}</strong> for the code.
+                </p>
+                <p className="muted" style={{ fontSize: "0.72rem", margin: "8px 0 0" }}>
+                  🔒 For your security, the code went straight from Cryptorefills to your email — it never touched our servers.
+                </p>
               </div>
               <button className="primary" style={{ marginTop: 14 }} onClick={reset}>Buy another</button>
             </>

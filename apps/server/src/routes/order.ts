@@ -49,6 +49,13 @@ orderRouter.post("/", async (req, res) => {
       recipientEmail?: string;
     };
 
+    // The gift card code is emailed by Cryptorefills directly to the buyer, so a
+    // valid delivery email is required (NON-CUSTODIAL CODE POLICY).
+    const email = (recipientEmail ?? "").trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: "a valid recipientEmail is required for delivery" });
+    }
+
     const quote = await resolveQuote(quoteId);
     if (!quote) return res.status(404).json({ error: "quote not found" });
     if (new Date(quote.expiresAt).getTime() < Date.now()) {
@@ -67,7 +74,7 @@ orderRouter.post("/", async (req, res) => {
           country_code: quote.country,
           face_value: quote.faceValue,
           coin,
-          ...(recipientEmail ? { email: recipientEmail } : {}),
+          email,
         });
         break;
       } catch {
@@ -75,7 +82,7 @@ orderRouter.post("/", async (req, res) => {
       }
     }
 
-    const state = startOrderPipeline({ quote, payerAddress });
+    const state = startOrderPipeline({ quote, payerAddress, recipientEmail: email });
     res.json({
       orderId: state.orderId,
       status: state.status,

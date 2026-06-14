@@ -40,6 +40,9 @@ export interface OrderState {
   usdcNeededWei: string;
   usdcSwappedWei: string | null;
   upstreamOrderId: string | null;
+  recipientEmail: string;
+  // Always null. Codes are emailed by Cryptorefills directly to recipientEmail;
+  // the orchestrator never receives or stores them (NON-CUSTODIAL CODE POLICY).
   giftCardCode: string | null;
   txHashes: Record<string, string>;
   expiresAt: string;
@@ -66,6 +69,7 @@ export function getPendingDeposits(): Map<string, PendingDeposit> {
 export function startOrderPipeline(params: {
   quote: Quote;
   payerAddress: string;
+  recipientEmail: string;
 }): OrderState {
   const depositAddress =
     process.env.ORCHESTRATOR_SAFE_ADDRESS ?? "0x_DEMO_MODE_no_safe_configured";
@@ -77,6 +81,7 @@ export function startOrderPipeline(params: {
     orderId: randomUUID(),
     quoteId: params.quote.id,
     payerAddress: params.payerAddress,
+    recipientEmail: params.recipientEmail,
     brand: params.quote.brand,
     country: params.quote.country,
     faceValue: params.quote.faceValue,
@@ -183,6 +188,7 @@ async function runPayment(state: OrderState): Promise<void> {
     country: state.country,
     faceValue: state.faceValue,
     usdcNeededWei: BigInt(state.usdcNeededWei),
+    recipientEmail: state.recipientEmail,
   });
 
   state.upstreamOrderId = result.upstreamOrderId;
@@ -193,12 +199,13 @@ async function runPayment(state: OrderState): Promise<void> {
   await persist(state);
   console.log(`[pipeline] ${state.orderId} PAID (upstream ${result.upstreamOrderId})`);
 
-  if (result.giftCardCode) {
+  // Code is emailed by Cryptorefills directly to the buyer — we only confirm
+  // delivery status, never the code itself (NON-CUSTODIAL CODE POLICY).
+  if (result.delivered) {
     state.status = "DELIVERED";
-    state.giftCardCode = result.giftCardCode;
     state.updatedAt = new Date().toISOString();
     await persist(state);
-    console.log(`[pipeline] ${state.orderId} DELIVERED`);
+    console.log(`[pipeline] ${state.orderId} DELIVERED → emailed to buyer`);
   }
 }
 
@@ -374,16 +381,16 @@ export async function resumeStuckOrders(): Promise<void> {
 
         case "PAYING":
           if (state.upstreamOrderId) {
-            // Payment was sent — only need to poll for delivery
-            resumePaymentPolling({ upstreamOrderId: state.upstreamOrderId }).then((code) => {
-              if (code) {
+            // Payment was sent — only need to confirm delivery status (the code
+            // is emailed straight to the buyer; we never see it).
+            resumePaymentPolling({ upstreamOrderId: state.upstreamOrderId }).then((delivered) => {
+              if (delivered) {
                 state.status = "DELIVERED";
-                state.giftCardCode = code;
                 state.updatedAt = new Date().toISOString();
                 persist(state).catch(() => {});
-                console.log(`[pipeline] ${state.orderId} DELIVERED (resumed)`);
+                console.log(`[pipeline] ${state.orderId} DELIVERED (resumed) → emailed to buyer`);
               } else {
-                console.error(`[pipeline] ${state.orderId}: no gift card code after resume poll`);
+                console.error(`[pipeline] ${state.orderId}: delivery not confirmed after resume poll`);
                 markFailed(state);
               }
             }).catch((err) => {

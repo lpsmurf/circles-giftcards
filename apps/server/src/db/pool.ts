@@ -71,6 +71,12 @@ export async function runMigrations(): Promise<void> {
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ
   `);
 
+  // Buyer's delivery email — Cryptorefills sends the gift card code directly to
+  // this address. The orchestrator never receives or stores the code itself.
+  await query(`
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS recipient_email TEXT
+  `);
+
   // Fast lookups for the deposit watcher (AWAITING_DEPOSIT orders)
   await query(`
     CREATE INDEX IF NOT EXISTS orders_status_idx ON orders (status)

@@ -1,6 +1,12 @@
 import { query } from "./pool.js";
-import { encryptCode, decryptCode } from "./crypto.js";
+import { decryptCode } from "./crypto.js";
 import type { OrderState } from "../services/orderPipeline.js";
+
+// NON-CUSTODIAL CODE POLICY: gift card codes are delivered by Cryptorefills
+// directly to the buyer's email. The orchestrator never receives or stores a
+// code, so gift_card_code is always written as NULL. The column and the
+// decrypt-on-read are retained only so any legacy encrypted rows remain
+// readable during migration.
 
 // Columns that change on every update — everything except order_id / created_at.
 const UPDATE_COLS = [
@@ -28,7 +34,8 @@ function toRow(s: OrderState) {
     usdc_needed_wei: s.usdcNeededWei,
     usdc_swapped_wei: s.usdcSwappedWei,
     upstream_order_id: s.upstreamOrderId,
-    gift_card_code: s.giftCardCode ? encryptCode(s.giftCardCode) : null,
+    gift_card_code: null, // never stored — see NON-CUSTODIAL CODE POLICY above
+    recipient_email: s.recipientEmail,
     tx_hashes: JSON.stringify(s.txHashes),
     expires_at: s.expiresAt,
     created_at: s.createdAt,
@@ -51,6 +58,7 @@ function fromRow(r: Record<string, unknown>): OrderState {
     usdcNeededWei: r.usdc_needed_wei as string,
     usdcSwappedWei: (r.usdc_swapped_wei as string | null) ?? null,
     upstreamOrderId: (r.upstream_order_id as string | null) ?? null,
+    recipientEmail: (r.recipient_email as string | null) ?? "",
     giftCardCode: r.gift_card_code ? decryptCode(r.gift_card_code as string) : null,
     txHashes:
       typeof r.tx_hashes === "string"
@@ -69,14 +77,14 @@ export async function insertOrder(s: OrderState): Promise<void> {
        (order_id, quote_id, payer_address, brand, country, face_value,
         status, deposit_address, crc_required_wei, crc_received_wei,
         usdc_needed_wei, usdc_swapped_wei, upstream_order_id,
-        gift_card_code, tx_hashes, expires_at, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+        gift_card_code, recipient_email, tx_hashes, expires_at, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
      ON CONFLICT (order_id) DO NOTHING`,
     [
       r.order_id, r.quote_id, r.payer_address, r.brand, r.country,
       r.face_value, r.status, r.deposit_address, r.crc_required_wei,
       r.crc_received_wei, r.usdc_needed_wei, r.usdc_swapped_wei,
-      r.upstream_order_id, r.gift_card_code, r.tx_hashes,
+      r.upstream_order_id, r.gift_card_code, r.recipient_email, r.tx_hashes,
       r.expires_at, r.created_at, r.updated_at,
     ]
   );
@@ -99,7 +107,7 @@ export async function updateOrder(s: OrderState): Promise<void> {
       s.crcReceivedWei,
       s.usdcSwappedWei,
       s.upstreamOrderId,
-      s.giftCardCode,
+      null, // gift_card_code — never stored (NON-CUSTODIAL CODE POLICY)
       JSON.stringify(s.txHashes),
       s.updatedAt,
     ]

@@ -16,7 +16,6 @@ import {
   getOrderStatus,
   getPaymentViasWithCurrencies,
 } from "@circles-giftcards/cryptorefills-client";
-import { getOrCreateInbox, pollInboxForCode } from "./emailInbox.js";
 
 const POLL_INTERVAL_MS = 10_000;
 const POLL_TIMEOUT_MS = 10 * 60_000;
@@ -101,16 +100,15 @@ const ZERO_ADDR = "0x0000000000000000000000000000000000000000" as Address;
 
 // ---- Polling ---------------------------------------------------------------
 
-async function pollForDelivery(upstreamOrderId: string): Promise<string | null> {
+/** Poll Cryptorefills for delivery STATUS only. The gift card code is emailed
+ *  directly to the buyer — we deliberately never read the code field, so the
+ *  orchestrator holds no custody of codes (NON-CUSTODIAL CODE POLICY). */
+async function pollForDelivery(upstreamOrderId: string): Promise<boolean> {
   const deadline = Date.now() + POLL_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    const status = (await getOrderStatus(upstreamOrderId)) as {
-      status?: string;
-      data?: { code?: string };
-      gift_card?: { code?: string };
-    };
+    const status = (await getOrderStatus(upstreamOrderId)) as { status?: string };
     const s = (status.status ?? "").toUpperCase();
-    if (s === "DELIVERED") return status.data?.code ?? status.gift_card?.code ?? null;
+    if (s === "DELIVERED") return true;
     if (s === "FAILED" || s === "CANCELLED") {
       throw new Error(`Cryptorefills order ${s.toLowerCase()}`);
     }
@@ -123,32 +121,25 @@ async function pollForDelivery(upstreamOrderId: string): Promise<string | null> 
 
 // ---- Public API ------------------------------------------------------------
 
-/** Resume delivery polling for an order that already has an upstreamOrderId
- *  (i.e. payment was sent but server restarted before the code was received). */
+/** Resume delivery confirmation for an order that already has an upstreamOrderId
+ *  (payment was sent but the server restarted before delivery was confirmed).
+ *  Returns whether Cryptorefills reports the order as DELIVERED. */
 export async function resumePaymentPolling(params: {
   upstreamOrderId: string;
-}): Promise<string | null> {
-  let code: string | null = null;
+}): Promise<boolean> {
   try {
-    code = await pollForDelivery(params.upstreamOrderId);
+    return await pollForDelivery(params.upstreamOrderId);
   } catch (err) {
     console.warn(`[paymentExecutor] resume poll error for ${params.upstreamOrderId}:`, err);
+    return false;
   }
-  if (!code && process.env.AGENTMAIL_API_KEY) {
-    try {
-      const { inboxId } = await getOrCreateInbox();
-      // afterMs=0: scan entire inbox — we don't know when the original order was created
-      code = await pollInboxForCode(inboxId, 0, 5 * 60_000);
-    } catch { /* ignore inbox errors on resume */ }
-  }
-  return code;
 }
 
 export interface PaymentResult {
   upstreamOrderId: string;
   paymentTxHash: string;
   bridgeTxHash: string | null;
-  giftCardCode: string | null;
+  delivered: boolean;
 }
 
 /**
@@ -165,19 +156,18 @@ export async function executePayment(params: {
   country: string;
   faceValue: number;
   usdcNeededWei: bigint;
+  recipientEmail: string;
 }): Promise<PaymentResult> {
   if (!process.env.OPERATOR_KEY) throw new Error("OPERATOR_KEY not set");
 
-  // In testnet mode Cryptorefills is not available — return a mock gift card.
+  // In testnet mode Cryptorefills is not available — simulate direct delivery.
   if (TESTNET) {
-    const code = "TEST-" + Math.random().toString(36).slice(2, 6).toUpperCase() +
-      "-" + Math.random().toString(36).slice(2, 6).toUpperCase();
-    console.log(`[paymentExecutor] TESTNET — mock gift card: ${code}`);
+    console.log(`[paymentExecutor] TESTNET — simulated delivery to ${params.recipientEmail}`);
     return {
       upstreamOrderId: `testnet-${Date.now()}`,
       paymentTxHash: `0x${"ef".repeat(32)}`,
       bridgeTxHash: null,
-      giftCardCode: code,
+      delivered: true,
     };
   }
 
@@ -216,36 +206,25 @@ export async function executePayment(params: {
   if (!settlementChain) throw new Error(`no viem chain for chainId ${route.chain.chainId}`);
 
   // ---- 3. Validate + create Cryptorefills order ----------------------------
-  // Get the shared AgentMail inbox so Cryptorefills can deliver the gift card
-  // code by email for brands that don't return it in the API response.
-  let inboxEmail: string | null = null;
-  let inboxId: string | null = null;
-  if (process.env.AGENTMAIL_API_KEY) {
-    try {
-      const inbox = await getOrCreateInbox();
-      inboxEmail = inbox.email;
-      inboxId = inbox.inboxId;
-    } catch (err) {
-      console.warn("[paymentExecutor] AgentMail inbox unavailable, proceeding without email:", err);
-    }
-  }
-
+  // The buyer's own email is passed so Cryptorefills delivers the gift card code
+  // DIRECTLY to them. The orchestrator never receives or stores the code
+  // (NON-CUSTODIAL CODE POLICY).
   await validateOrder({
     brand_name: params.brand,
     country_code: params.country,
     face_value: params.faceValue,
     coin: "USDC",
     network: route.chain.name,
+    email: params.recipientEmail,
   });
 
-  const orderCreatedAt = Date.now();
   const orderResult = (await createOrder({
     brand_name: params.brand,
     country_code: params.country,
     face_value: params.faceValue,
     coin: "USDC",
     network: route.chain.name,
-    ...(inboxEmail ? { email: inboxEmail } : {}),
+    email: params.recipientEmail,
   })) as {
     order_id?: string;
     payment_details?: { address?: string; amount?: string };
@@ -417,21 +396,16 @@ export async function executePayment(params: {
   await settlePub.waitForTransactionReceipt({ hash: payTxHash });
   console.log(`[paymentExecutor] USDC sent (tx ${payTxHash}), polling for delivery...`);
 
-  // ---- 6. Poll until DELIVERED (API + inbox fallback) ----------------------
-  let giftCardCode = await pollForDelivery(upstreamOrderId);
-
-  // If the API didn't return a code (email-delivery brand), check the inbox.
-  if (!giftCardCode && inboxId) {
-    console.log(`[paymentExecutor] API returned no code — checking AgentMail inbox...`);
-    giftCardCode = await pollInboxForCode(inboxId, orderCreatedAt);
+  // ---- 6. Confirm DELIVERED status (code is emailed straight to the buyer) -
+  const delivered = await pollForDelivery(upstreamOrderId);
+  if (delivered) {
+    console.log(`[paymentExecutor] ${upstreamOrderId} DELIVERED → emailed to ${params.recipientEmail}`);
   }
-
-  if (giftCardCode) console.log(`[paymentExecutor] ${upstreamOrderId} DELIVERED`);
 
   return {
     upstreamOrderId,
     paymentTxHash: payTxHash,
     bridgeTxHash,
-    giftCardCode,
+    delivered,
   };
 }
