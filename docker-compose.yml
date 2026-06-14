@@ -1,0 +1,49 @@
+services:
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       circles_giftcards
+      POSTGRES_USER:     circles
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U circles -d circles_giftcards"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      context: .
+      target: server
+    restart: unless-stopped
+    env_file: apps/server/.env
+    environment:
+      DATABASE_URL: postgres://circles:${POSTGRES_PASSWORD}@db:5432/circles_giftcards
+      PORT: 3001
+    depends_on:
+      db:
+        condition: service_healthy
+    # Not exposed directly — nginx proxies to it
+    expose:
+      - "3001"
+
+  web:
+    build:
+      context: .
+      target: web
+    restart: unless-stopped
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - server
+
+volumes:
+  db_data:

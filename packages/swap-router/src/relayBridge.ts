@@ -51,9 +51,87 @@ export async function quoteBridge(params: {
   };
 }
 
-export async function executeBridge(_quote: BridgeQuote): Promise<{ txHash: string }> {
-  if (!process.env.OPERATOR_KEY) {
-    throw new Error("bridge execution disabled: OPERATOR_KEY not configured (M2)");
+// Shape of each step item returned by Relay.link's execute endpoint.
+interface RelayTxData {
+  from?: string;
+  to: string;
+  data: string;
+  value?: string; // hex or decimal string
+  chainId?: number;
+}
+
+interface RelayStep {
+  id: string;
+  items: Array<{ status: string; data: RelayTxData }>;
+}
+
+/**
+ * Execute a Gnosis → destination USDC bridge via Relay.link.
+ *
+ * Relay.link returns an ordered list of steps (typically: approve + bridge).
+ * Each step's transaction is handed to `exec` for signing and submission;
+ * `exec` must return the tx hash. Steps run sequentially — the bridge step
+ * depends on the approval being confirmed first.
+ *
+ * @param params   Same fields as quoteBridge — re-calls the API at execution
+ *                 time so the calldata is fresh and not stale from the quote.
+ * @param exec     Caller-provided signer: signs + submits one tx, returns hash.
+ */
+export async function executeBridge(
+  params: {
+    originChainId: number;
+    destinationChainId: number;
+    currency: string;
+    toCurrency: string;
+    amountWei: bigint;
+    recipient: string;
+    user: string;
+  },
+  exec: (tx: { to: string; data: string; value: bigint; chainId: number }) => Promise<string>
+): Promise<{ originTxHash: string }> {
+  const res = await fetch(`${RELAY_API}/execute/bridge`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      user: params.user,
+      recipient: params.recipient,
+      originChainId: params.originChainId,
+      destinationChainId: params.destinationChainId,
+      originCurrency: params.currency,
+      destinationCurrency: params.toCurrency,
+      amount: params.amountWei.toString(),
+      tradeType: "EXACT_OUTPUT",
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`relay execute failed: ${res.status} ${await res.text()}`);
   }
-  throw new Error("not implemented: pending M2 (see prepkit/MILESTONES.md)");
+
+  const json = (await res.json()) as { steps?: RelayStep[] };
+  const steps = json.steps ?? [];
+  if (steps.length === 0) throw new Error("relay returned no bridge steps");
+
+  let lastHash = "";
+  for (const step of steps) {
+    for (const item of step.items) {
+      if (item.status === "complete") continue;
+      const d = item.data;
+      // value may be hex ("0x...") or decimal string or absent
+      const value =
+        d.value === undefined || d.value === "0x0" || d.value === "0"
+          ? 0n
+          : d.value.startsWith("0x")
+          ? BigInt(d.value)
+          : BigInt(d.value);
+
+      lastHash = await exec({
+        to: d.to,
+        data: d.data,
+        value,
+        chainId: d.chainId ?? params.originChainId,
+      });
+    }
+  }
+
+  return { originTxHash: lastHash };
 }

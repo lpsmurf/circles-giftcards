@@ -43,3 +43,60 @@ button.primary:disabled { opacity: 0.5; cursor: default; }
 .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.7rem; background: var(--accent-2); color: #08130e; }
 .error { color: #ff7b72; font-size: 0.85rem; }
 .deposit { word-break: break-all; font-family: ui-monospace, monospace; font-size: 0.8rem; background: var(--bg); padding: 10px; border-radius: 8px; margin-top: 8px; }
+
+/* ── Copy rows ─────────────────────────────────────────── */
+.copy-row { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.copy-row:last-of-type { border-bottom: none; }
+.copy-val { display: flex; align-items: center; gap: 8px; }
+.copy-val .mono { flex: 1; word-break: break-all; font-family: ui-monospace, monospace; font-size: 0.8rem; }
+.copy-btn {
+  flex-shrink: 0; padding: 3px 10px; font-size: 0.75rem; border: 1px solid var(--border);
+  border-radius: 6px; background: var(--bg); color: var(--text); cursor: pointer;
+}
+.copy-btn:hover { border-color: var(--accent); }
+
+/* ── Status stepper ────────────────────────────────────── */
+.status-steps { display: flex; gap: 0; margin: 4px 0 8px; }
+.step { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 0.72rem; color: var(--muted); }
+.step-dot {
+  width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--border);
+  display: flex; align-items: center; justify-content: center; font-size: 0.7rem;
+}
+.step.done .step-dot { background: var(--accent-2); border-color: var(--accent-2); color: #08130e; font-weight: 700; }
+.step.active .step-dot { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+.step.active .step-label { color: var(--text); }
+
+/* ── Gift card code ────────────────────────────────────── */
+.gift-card { background: var(--bg); border: 1px solid var(--accent-2); border-radius: 10px; padding: 14px; margin-top: 8px; }
+.gift-card .code { font-size: 1.1rem; font-weight: 700; letter-spacing: 0.1em; color: var(--text); }
+
+/* ── Countdown ─────────────────────────────────────────── */
+.countdown { font-variant-numeric: tabular-nums; font-weight: 600; }
+.countdown.urgent { color: #ff7b72; }
+
+/* ── Denomination chips ────────────────────────────────── */
+.denom-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.denom-btn {
+  padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text); font-size: 0.9rem; cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.denom-btn:hover { border-color: var(--accent); }
+.denom-btn.selected { border-color: var(--accent); background: var(--accent); color: #fff; }
+
+/* ── Wallet connect ────────────────────────────────────── */
+.wallet-btn {
+  padding: 6px 14px; border-radius: 8px; border: 1px solid var(--accent);
+  background: transparent; color: var(--accent); font-size: 0.85rem;
+  font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.wallet-btn:hover { background: var(--accent); color: #fff; }
+.wallet-btn:disabled { opacity: 0.5; cursor: default; }
+.wallet-chip {
+  padding: 5px 12px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--card); color: var(--muted); font-size: 0.8rem;
+  font-family: ui-monospace, monospace; white-space: nowrap;
+}
+
+/* ── Mono utility ──────────────────────────────────────── */
+.mono { font-family: ui-monospace, monospace; }

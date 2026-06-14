@@ -13,7 +13,8 @@
     "dev:server": "npm run dev -w apps/server",
     "dev:web": "npm run dev -w apps/web",
     "build": "npm run build --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "chiado:bootstrap": "npx tsx scripts/chiado/deploy-token.ts"
   },
   "engines": {
     "node": ">=20.10"

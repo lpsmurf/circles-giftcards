@@ -1,20 +1,55 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { getOrderStatus, validateOrder } from "@circles-giftcards/cryptorefills-client";
 import { quotes } from "./quote.js";
+import { getQuote as getQuoteFromDb } from "../db/quoteStore.js";
 import { startOrderPipeline, getPipelineState } from "../services/orderPipeline.js";
 
 export const orderRouter = Router();
 
-// Begin an order from an unexpired quote. In demo mode (no OPERATOR_KEY) this
-// validates upstream and returns the deposit instructions without executing.
+// ── Rate limiting (POST /api/order) ───────────────────────────────────────────
+// Sliding window: MAX_ORDERS_PER_WINDOW orders per IP within WINDOW_MS.
+const WINDOW_MS = 10 * 60_000;  // 10 minutes
+const MAX_ORDERS = 5;
+const ipWindows = new Map<string, number[]>();
+
+function isRateLimited(req: Request): boolean {
+  const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0].trim()
+    ?? req.socket.remoteAddress
+    ?? "unknown";
+  const now = Date.now();
+  const timestamps = (ipWindows.get(ip) ?? []).filter((t) => now - t < WINDOW_MS);
+  if (timestamps.length >= MAX_ORDERS) return true;
+  timestamps.push(now);
+  ipWindows.set(ip, timestamps);
+  // Evict old entries every hour to avoid unbounded growth
+  if (ipWindows.size > 10_000) {
+    for (const [k, v] of ipWindows) {
+      if (v.every((t) => now - t >= WINDOW_MS)) ipWindows.delete(k);
+    }
+  }
+  return false;
+}
+
+async function resolveQuote(quoteId: string) {
+  if (quotes.has(quoteId)) return quotes.get(quoteId);
+  if (process.env.DATABASE_URL) return (await getQuoteFromDb(quoteId)) ?? undefined;
+  return undefined;
+}
+
 orderRouter.post("/", async (req, res) => {
+  if (isRateLimited(req)) {
+    return res.status(429).json({
+      error: `too many orders — max ${MAX_ORDERS} per ${WINDOW_MS / 60_000} minutes`,
+    });
+  }
   try {
     const { quoteId, payerAddress, recipientEmail } = req.body as {
       quoteId: string;
       payerAddress: string;
       recipientEmail?: string;
     };
-    const quote = quotes.get(quoteId);
+
+    const quote = await resolveQuote(quoteId);
     if (!quote) return res.status(404).json({ error: "quote not found" });
     if (new Date(quote.expiresAt).getTime() < Date.now()) {
       return res.status(410).json({ error: "quote expired — request a new one" });
@@ -43,8 +78,17 @@ orderRouter.post("/", async (req, res) => {
 });
 
 orderRouter.get("/:id", async (req, res) => {
-  const state = getPipelineState(req.params.id);
+  const state = await getPipelineState(req.params.id);
   if (!state) return res.status(404).json({ error: "order not found" });
+
+  // Strip gift card code from the response — served separately once DELIVERED
+  // to allow future encryption / show-once semantics.
+  const { giftCardCode, ...publicState } = state;
+  let giftCard: { code: string } | null = null;
+  if (state.status === "DELIVERED" && giftCardCode) {
+    giftCard = { code: giftCardCode };
+  }
+
   let upstream: unknown = null;
   if (state.upstreamOrderId) {
     try {
@@ -53,5 +97,6 @@ orderRouter.get("/:id", async (req, res) => {
       upstream = { error: "upstream status unavailable" };
     }
   }
-  res.json({ ...state, upstream });
+
+  res.json({ ...publicState, giftCard, upstream });
 });

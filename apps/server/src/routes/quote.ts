@@ -2,6 +2,7 @@ import { Router } from "express";
 import { randomUUID } from "node:crypto";
 import { getProductPrice } from "@circles-giftcards/cryptorefills-client";
 import { quoteSellForExactBuy } from "@circles-giftcards/swap-router";
+import { saveQuote, getQuote as getQuoteFromDb } from "../db/quoteStore.js";
 
 // Quote math (docs/SWAP-ROUTING.md):
 //   CRC_total = cowQuote(USDC_out = P + B) × (1 + slippage) × (1 + serviceFee)
@@ -28,8 +29,22 @@ export interface Quote {
   expiresAt: string;
 }
 
-// In-memory quote store; M2 replaces with Postgres + server signature.
-export const quotes = new Map<string, Quote>();
+// In-memory fallback (demo mode / no DATABASE_URL).
+const memQuotes = new Map<string, Quote>();
+
+async function storeQuote(q: Quote): Promise<void> {
+  memQuotes.set(q.id, q);
+  if (process.env.DATABASE_URL) await saveQuote(q);
+}
+
+async function lookupQuote(id: string): Promise<Quote | undefined> {
+  if (memQuotes.has(id)) return memQuotes.get(id);
+  if (process.env.DATABASE_URL) return (await getQuoteFromDb(id)) ?? undefined;
+  return undefined;
+}
+
+// Keep exporting `quotes` for order.ts compatibility (reads the in-memory map).
+export const quotes = memQuotes;
 
 export const quoteRouter = Router();
 
@@ -91,15 +106,15 @@ quoteRouter.post("/", async (req, res) => {
       usdcTotal: Math.round(usdcTotal * 100) / 100,
       expiresAt: new Date(Date.now() + QUOTE_TTL_SECONDS * 1000).toISOString(),
     };
-    quotes.set(quote.id, quote);
+    await storeQuote(quote);
     res.json(quote);
   } catch (err) {
     res.status(502).json({ error: String(err) });
   }
 });
 
-quoteRouter.get("/:id", (req, res) => {
-  const q = quotes.get(req.params.id);
+quoteRouter.get("/:id", async (req, res) => {
+  const q = await lookupQuote(req.params.id);
   if (!q) return res.status(404).json({ error: "quote not found" });
   res.json(q);
 });
