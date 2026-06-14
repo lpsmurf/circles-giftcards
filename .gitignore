@@ -8,3 +8,6 @@ dist/
 
 # Hardhat/solidity build cache
 cache/
+
+# Local-only Claude Code permission allowlist (not shared)
+.claude/settings.json
