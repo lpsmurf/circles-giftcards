@@ -29,7 +29,7 @@ services:
         condition: service_healthy
     # Bind only to loopback — system nginx proxies from outside
     ports:
-      - "127.0.0.1:3001:3001"
+      - "127.0.0.1:3002:3001"
 
 volumes:
   db_data:
